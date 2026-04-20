@@ -1,0 +1,5 @@
+.vscode
+target/
+*.sarif
+codeql-db/
+/tmp/

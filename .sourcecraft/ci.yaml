@@ -1,0 +1,65 @@
+on:
+  pull_request:
+    - workflows:
+        - codeql-scan
+      filter:
+        source_branches: [ "**" ]
+        target_branches: [ "main" ]
+  push:
+    - workflows:
+        - codeql-scan
+      filter:
+        branches: [ "main" ]
+
+workflows:
+  codeql-scan:
+    checkout:
+      enabled: true
+    tasks:
+      - name: codeql-java
+        cubes:
+          - name: install-deps
+            script:
+              - sudo apt-get update -qq
+              - sudo apt-get install -y -qq openjdk-21-jdk maven wget
+              - |
+                wget -q "https://github.com/github/codeql-action/releases/download/codeql-bundle-v2.22.3/codeql-bundle-linux64.tar.gz" \
+                  -O /tmp/codeql.tar.gz
+              - sudo tar -xzf /tmp/codeql.tar.gz -C /opt
+              - /opt/codeql/codeql version
+
+          - name: create-database
+            needs: install-deps
+            script:
+              - |
+                export JAVA_HOME=$(dirname $(dirname $(readlink -f /usr/bin/java)))
+                /opt/codeql/codeql database create /tmp/codeql-db \
+                  --language=java \
+                  --source-root=$SOURCECRAFT_WORKSPACE \
+                  --command="mvn compile -B" \
+                  --overwrite
+
+          - name: run-codeql-analysis
+            needs: create-database
+            script:
+              - |
+                /opt/codeql/codeql database analyze /tmp/codeql-db \
+                  codeql/java-queries \
+                  --format=sarif-latest \
+                  --output=$SOURCECRAFT_WORKSPACE/result.sarif
+            artifacts:
+              paths:
+                - result.sarif
+
+          - name: validate-scan-results
+            needs: run-codeql-analysis
+            script:
+              - cat $SOURCECRAFT_WORKSPACE/result.sarif
+
+          - name: upload-sarif-to-sourcecraft
+            needs: validate-scan-results
+            image:
+              name: sourcecraft/scan-result-uploader:0.6.0
+            script:
+              - export APPSEC_CUSTOM_ENGINE_NAME="CodeQL"
+              - /app/bin/scan-result-uploader
