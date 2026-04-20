@@ -60,6 +60,8 @@ workflows:
             needs: validate-scan-results
             image:
               name: sourcecraft/scan-result-uploader:0.6.0
+            env:
+              APPSEC_BACKEND_HOST: grpc-appsec.o.cloud-preprod.yandex.net
             script:
               - export APPSEC_CUSTOM_ENGINE_NAME="CodeQL"
               - /app/bin/scan-result-uploader
