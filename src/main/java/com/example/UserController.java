@@ -10,16 +10,16 @@ import java.io.PrintWriter;
 import java.sql.*;
 
 /**
- * Пример уязвимого сервлета — SQL Injection через HTTP-параметр.
+ * Example vulnerable servlet: SQL injection through an HTTP parameter.
  *
- * Code flow (путь данных):
- *   SOURCE: req.getParameter("id")          — ввод пользователя
+ * Code flow:
+ *   SOURCE: req.getParameter("id")          - user-controlled input
  *     |
  *     v
- *   PROPAGATION: buildUserQuery(userId)      — конкатенация строки
+ *   PROPAGATION: passThrough... -> buildUserQuery... - two taint branches
  *     |
  *     v
- *   SINK: stmt.executeQuery(query)           — выполнение SQL-запроса
+ *   SINK: stmt.executeQuery(query)           - SQL query execution
  */
 @WebServlet("/users")
 public class UserController extends HttpServlet {
@@ -28,11 +28,20 @@ public class UserController extends HttpServlet {
     protected void doGet(HttpServletRequest req, HttpServletResponse resp)
             throws ServletException, IOException {
 
-        // SOURCE: параметр из HTTP-запроса — пользовательский ввод без проверки
+        // SOURCE: HTTP request parameter used as unchecked user input
         String userId = req.getParameter("id");
 
-        // PROPAGATION: пользовательский ввод передаётся в метод построения запроса
-        String query = buildUserQuery(userId);
+        // PROPAGATION: the same source reaches the shared sink through two different branches
+        String query;
+        String mode = req.getParameter("mode");
+
+        if ("builder".equals(mode)) {
+            String propagated = passThroughBuilder(userId);
+            query = buildUserQueryWithBuilder(propagated);
+        } else {
+            String propagated = passThroughConcat(userId);
+            query = buildUserQueryWithConcat(propagated);
+        }
 
         resp.setContentType("text/html;charset=UTF-8");
         PrintWriter out = resp.getWriter();
@@ -40,7 +49,7 @@ public class UserController extends HttpServlet {
         try (Connection conn = getConnection();
              Statement stmt = conn.createStatement()) {
 
-            // SINK: строка запроса с пользовательским вводом передаётся в executeQuery
+            // SINK: the query string containing user input is passed to executeQuery
             ResultSet rs = stmt.executeQuery(query);
 
             out.println("<ul>");
@@ -55,14 +64,30 @@ public class UserController extends HttpServlet {
     }
 
     /**
-     * Уязвимый метод: строит SQL-запрос путём прямой конкатенации
-     * пользовательского ввода — без экранирования и без PreparedStatement.
+     * Vulnerable helper methods route user input through different branches
+     * and eventually assemble SQL without escaping or PreparedStatement.
      *
-     * Пример атаки: id=' OR '1'='1
+     * Example attack: id=' OR '1'='1
      */
-    private String buildUserQuery(String userId) {
-        // Уязвимость: прямая конкатенация позволяет изменить структуру запроса
+    private String passThroughConcat(String userId) {
+        return userId;
+    }
+
+    private String passThroughBuilder(String userId) {
+        return "" + userId;
+    }
+
+    private String buildUserQueryWithConcat(String userId) {
+        // Vulnerability: direct concatenation allows the query structure to be altered
         return "SELECT id, name, email FROM users WHERE id = '" + userId + "'";
+    }
+
+    private String buildUserQueryWithBuilder(String userId) {
+        return new StringBuilder()
+                .append("SELECT id, name, email FROM users WHERE id = '")
+                .append(userId)
+                .append("'")
+                .toString();
     }
 
     private Connection getConnection() throws SQLException {
