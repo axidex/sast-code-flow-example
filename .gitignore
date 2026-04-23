@@ -2,4 +2,4 @@
 target/
 *.sarif
 codeql-db/
-/tmp/
+/tmp
