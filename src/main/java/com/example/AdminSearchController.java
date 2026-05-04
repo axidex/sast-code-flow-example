@@ -20,7 +20,7 @@ public class AdminSearchController extends HttpServlet {
     protected void doGet(HttpServletRequest req, HttpServletResponse resp)
             throws ServletException, IOException {
         String email = req.getParameter("email");
-        String query = buildSearchQuery(copyUserInput(email));
+        String query = QueryHelper.buildSearchQuery(QueryHelper.sanitizeInput(email));
 
         resp.setContentType("text/plain;charset=UTF-8");
         PrintWriter out = resp.getWriter();
@@ -35,14 +35,6 @@ public class AdminSearchController extends HttpServlet {
         } catch (SQLException e) {
             resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, e.getMessage());
         }
-    }
-
-    private String copyUserInput(String value) {
-        return value == null ? "" : value;
-    }
-
-    private String buildSearchQuery(String email) {
-        return "SELECT id, name, email FROM users WHERE email = '" + email + "'";
     }
 
     private Connection getConnection() throws SQLException {
